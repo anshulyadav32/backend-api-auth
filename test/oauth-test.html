@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OAuth Test Page - LogReg</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #2980b9;
+            margin-top: 30px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px 10px 0;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .provider-button {
+            display: inline-flex;
+            align-items: center;
+            margin: 10px 10px 10px 0;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            color: white;
+            text-decoration: none;
+        }
+        .provider-button.google {
+            background-color: #DB4437;
+        }
+        .provider-button.github {
+            background-color: #24292e;
+        }
+        .provider-button img {
+            margin-right: 10px;
+            width: 20px;
+            height: 20px;
+        }
+        .result-section {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+        }
+        .token-display {
+            word-break: break-all;
+            font-family: monospace;
+            background: #eee;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>OAuth Test Page</h1>
+        <p>This page allows you to test OAuth integrations with the authentication server.</p>
+
+        <h2>1. OAuth Providers</h2>
+        <div>
+            <button id="loadProvidersBtn">Load Available Providers</button>
+            <div id="providersResult" class="result-section hidden">
+                <h3>Available Providers:</h3>
+                <div id="providersList"></div>
+            </div>
+        </div>
+
+        <h2>2. OAuth Login</h2>
+        <div id="loginButtons">
+            <!-- Will be populated dynamically -->
+        </div>
+
+        <h2>3. Profile Information</h2>
+        <div>
+            <button id="getProfileBtn" disabled>Get Profile Info</button>
+            <div id="profileResult" class="result-section hidden">
+                <h3>Profile Data:</h3>
+                <pre id="profileData"></pre>
+            </div>
+        </div>
+
+        <h2>4. Token Management</h2>
+        <div>
+            <div class="token-info hidden" id="tokenInfo">
+                <h3>Access Token:</h3>
+                <div class="token-display" id="accessTokenDisplay">Not available</div>
+                <p>Expires: <span id="tokenExpiry">Unknown</span></p>
+                
+                <h3>Refresh Token:</h3>
+                <div class="token-display" id="refreshTokenDisplay">Not available</div>
+                
+                <button id="refreshTokenBtn">Refresh Token</button>
+            </div>
+        </div>
+
+        <h2>5. Logout</h2>
+        <div>
+            <button id="logoutBtn" disabled>Logout</button>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE_URL = 'http://localhost:8080';
+        
+        // Store auth tokens
+        let accessToken = null;
+        let refreshToken = null;
+        
+        // DOM Elements
+        const loadProvidersBtn = document.getElementById('loadProvidersBtn');
+        const providersResult = document.getElementById('providersResult');
+        const providersList = document.getElementById('providersList');
+        const loginButtons = document.getElementById('loginButtons');
+        const getProfileBtn = document.getElementById('getProfileBtn');
+        const profileResult = document.getElementById('profileResult');
+        const profileData = document.getElementById('profileData');
+        const tokenInfo = document.getElementById('tokenInfo');
+        const accessTokenDisplay = document.getElementById('accessTokenDisplay');
+        const refreshTokenDisplay = document.getElementById('refreshTokenDisplay');
+        const tokenExpiry = document.getElementById('tokenExpiry');
+        const refreshTokenBtn = document.getElementById('refreshTokenBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        
+        // Load OAuth Providers
+        loadProvidersBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch(`${API_BASE_URL}/auth/oauth/providers`);
+                const data = await response.json();
+                
+                providersResult.classList.remove('hidden');
+                providersList.innerHTML = '';
+                
+                if (data.providers && data.providers.length) {
+                    data.providers.forEach(provider => {
+                        // Create login buttons
+                        const loginBtn = document.createElement('a');
+                        loginBtn.className = `provider-button ${provider}`;
+                        loginBtn.innerHTML = `<img src="https://cdn.jsdelivr.net/npm/simple-icons@v5/icons/${provider}.svg" alt="${provider} icon"> Login with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`;
+                        loginBtn.href = `${API_BASE_URL}/auth/oauth/${provider}`;
+                        
+                        loginButtons.appendChild(loginBtn);
+                        
+                        // Add to providers list
+                        const item = document.createElement('div');
+                        item.textContent = `✓ ${provider}`;
+                        providersList.appendChild(item);
+                    });
+                } else {
+                    providersList.textContent = 'No OAuth providers available';
+                }
+            } catch (error) {
+                providersResult.classList.remove('hidden');
+                providersList.innerHTML = `<p>Error: ${error.message}</p>`;
+            }
+        });
+        
+        // Function to handle OAuth response and token storage
+        function handleOAuthResponse() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            const refreshTokenParam = urlParams.get('refreshToken');
+            
+            if (token) {
+                accessToken = token;
+                refreshToken = refreshTokenParam;
+                
+                // Enable UI elements
+                getProfileBtn.disabled = false;
+                logoutBtn.disabled = false;
+                tokenInfo.classList.remove('hidden');
+                
+                // Display token info
+                accessTokenDisplay.textContent = maskToken(token);
+                refreshTokenDisplay.textContent = maskToken(refreshTokenParam);
+                
+                // Parse token expiry
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    const expiryDate = new Date(payload.exp * 1000);
+                    tokenExpiry.textContent = expiryDate.toLocaleString();
+                } catch (e) {
+                    tokenExpiry.textContent = 'Could not parse token expiry';
+                }
+                
+                // Clear URL parameters
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
+        
+        // Get Profile Info
+        getProfileBtn.addEventListener('click', async () => {
+            if (!accessToken) {
+                alert('You need to login first!');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                const data = await response.json();
+                
+                profileResult.classList.remove('hidden');
+                profileData.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                profileResult.classList.remove('hidden');
+                profileData.textContent = `Error: ${error.message}`;
+            }
+        });
+        
+        // Refresh Token
+        refreshTokenBtn.addEventListener('click', async () => {
+            if (!refreshToken) {
+                alert('No refresh token available!');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/auth/token`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ refreshToken })
+                });
+                const data = await response.json();
+                
+                if (data.token) {
+                    accessToken = data.token;
+                    refreshToken = data.refreshToken;
+                    
+                    // Update UI
+                    accessTokenDisplay.textContent = maskToken(accessToken);
+                    refreshTokenDisplay.textContent = maskToken(refreshToken);
+                    
+                    // Parse new token expiry
+                    try {
+                        const payload = JSON.parse(atob(accessToken.split('.')[1]));
+                        const expiryDate = new Date(payload.exp * 1000);
+                        tokenExpiry.textContent = expiryDate.toLocaleString();
+                    } catch (e) {
+                        tokenExpiry.textContent = 'Could not parse token expiry';
+                    }
+                    
+                    alert('Token refreshed successfully!');
+                }
+            } catch (error) {
+                alert(`Error refreshing token: ${error.message}`);
+            }
+        });
+        
+        // Logout
+        logoutBtn.addEventListener('click', async () => {
+            try {
+                await fetch(`${API_BASE_URL}/auth/logout`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                // Clear tokens
+                accessToken = null;
+                refreshToken = null;
+                
+                // Reset UI
+                getProfileBtn.disabled = true;
+                logoutBtn.disabled = true;
+                tokenInfo.classList.add('hidden');
+                profileResult.classList.add('hidden');
+                
+                alert('Logged out successfully!');
+            } catch (error) {
+                alert(`Error during logout: ${error.message}`);
+            }
+        });
+        
+        // Utility to mask token for display
+        function maskToken(token) {
+            if (!token) return 'Not available';
+            return `${token.substring(0, 10)}...${token.substring(token.length - 10)}`;
+        }
+        
+        // Check for OAuth response on page load
+        document.addEventListener('DOMContentLoaded', handleOAuthResponse);
+    </script>
+</body>
+</html>

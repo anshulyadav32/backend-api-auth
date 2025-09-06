@@ -1,8 +1,10 @@
 // src/models/index.js
 const { Sequelize, Op } = require('sequelize');
+const path = require('path');
 
-// Use PostgreSQL connection string from environment
-const sequelize = new Sequelize(process.env.STRING_POSTGRES_HOST || 'sqlite::memory:', {
+// Use PostgreSQL connection string from environment, or SQLite file for development
+const dbPath = path.join(__dirname, '../../database.sqlite');
+const sequelize = new Sequelize(process.env.STRING_POSTGRES_HOST || `sqlite:${dbPath}`, {
   dialect: process.env.STRING_POSTGRES_HOST ? 'postgres' : 'sqlite',
   logging: false,
   dialectOptions: process.env.STRING_POSTGRES_HOST ? {
