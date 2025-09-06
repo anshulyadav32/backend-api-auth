@@ -18,6 +18,10 @@ yarn-error.log*
 # Logs
 logs/
 *.log
+
+# Test artifacts and temporary files
+*_cookies.txt
+cookies.txt
 server.log
 
 # Runtime data

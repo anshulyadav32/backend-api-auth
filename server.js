@@ -26,6 +26,46 @@ console.log('Body parser configured');
 // Serve static files (for OAuth test page)
 app.use(express.static(path.join(__dirname, '.')));
 
+// Add index route with all endpoints
+app.get('/', (req, res) => {
+  res.json({
+    "service": "Enterprise Authentication System",
+    "version": "1.0.0",
+    "endpoints": {
+      "health": "/health",
+      "authentication": {
+        "register": "/auth/register",
+        "login": "/auth/login",
+        "logout": "/auth/logout",
+        "refresh": "/auth/refresh",
+        "profile": "/auth/profile"
+      },
+      "mfa": {
+        "setup": "/auth/mfa/setup",
+        "verify": "/auth/mfa/verify",
+        "disable": "/auth/mfa/disable"
+      },
+      "oauth": {
+        "google": "/auth/google",
+        "google_callback": "/auth/google/callback",
+        "github": "/auth/github",
+        "github_callback": "/auth/github/callback",
+        "link_google": "/auth/link/google",
+        "link_github": "/auth/link/github"
+      },
+      "admin": {
+        "users": "/auth/admin/users",
+        "promote": "/auth/admin/promote",
+        "demote": "/auth/admin/demote",
+        "revoke_sessions": "/auth/admin/revoke-sessions"
+      },
+      "testing": {
+        "oauth_test_page": "/oauth-test"
+      }
+    }
+  });
+});
+
 // Add health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
