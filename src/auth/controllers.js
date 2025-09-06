@@ -1,9 +1,11 @@
 // src/auth/controllers.js
-const { User, RefreshToken } = require('../../models');
+const { User, RefreshToken } = require('../models');
 const { z } = require('zod');
 const argon2 = require('argon2');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+
+console.log('Controllers loaded');
 
 const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || 'dev-access-secret';
 const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || 'dev-refresh-secret';
@@ -47,22 +49,48 @@ async function register(req, res) {
 const loginSchema = z.object({
   emailOrUsername: z.string(),
   password: z.string(),
+  mfaToken: z.string().optional(),
 });
 
 async function login(req, res) {
   try {
-    const { emailOrUsername, password } = loginSchema.parse(req.body);
-    const user = await User.findOne({
-      where: {
-        [User.sequelize.Op.or]: [
-          { email: emailOrUsername },
-          { username: emailOrUsername },
-        ],
-      },
-    });
+    const { emailOrUsername, password, mfaToken } = loginSchema.parse(req.body);
+    
+    // Try to find by email first
+    let user = await User.findOne({ where: { email: emailOrUsername } });
+    
+    // If not found, try by username
+    if (!user) {
+      user = await User.findOne({ where: { username: emailOrUsername } });
+    }
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
     const valid = await argon2.verify(user.passwordHash, password);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+    
+    // Check if MFA is enabled
+    if (user.isMfaEnabled) {
+      if (!mfaToken) {
+        return res.status(200).json({ 
+          mfaRequired: true, 
+          userId: user.id,
+          message: 'MFA token required' 
+        });
+      }
+      
+      // Verify MFA token
+      const speakeasy = require('speakeasy');
+      const verified = speakeasy.totp.verify({
+        secret: user.mfaSecret,
+        encoding: 'base32',
+        token: mfaToken,
+        window: 2,
+      });
+      
+      if (!verified) {
+        return res.status(401).json({ error: 'Invalid MFA token' });
+      }
+    }
+    
     // Create refresh token
     const tokenId = crypto.randomUUID();
     const refreshToken = signRefreshToken(user, tokenId);
@@ -74,7 +102,7 @@ async function login(req, res) {
     });
     res.cookie('refresh_token', refreshToken, {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -112,7 +140,7 @@ async function refresh(req, res) {
     });
     res.cookie('refresh_token', newRefreshToken, {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
